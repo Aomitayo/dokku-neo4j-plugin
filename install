@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# Build MongoDB image
+IMAGE="aomitayo/neo4j"
+docker build -q=true -t "$IMAGE" github.com/Aomitayo/neo4j-docker
+
+
+if [[ ! -d "$DOKKU_ROOT/.neo4j" ]]; then
+  mkdir -p "$DOKKU_ROOT/.neo4j/data"
+
+  chown -R dokku: "$DOKKU_ROOT/.neo4j"
+
+  docker run -p 7474:7474 -d -v "$DOKKU_ROOT/.neo4j/data":/var/lib/neo4j/data "$IMAGE" /var/lib/neo4j/bin/neo4j start
+  id=$(docker ps | grep "$IMAGE":latest |  awk '{print $1}')
+  neo4j_ip=$(docker port ${id} 7474 | awk '{split($0,a,":"); print a[1]}')
+  neo4j_port=$(docker port ${id} 7474 | awk '{split($0,a,":"); print a[2]}')
+  if [[ $neo4j_ip = "0.0.0.0" ]]; then
+    neo4j_ip=localhost
+  fi
+
+  docker stop "$id"
+fi
+

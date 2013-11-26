@@ -1,0 +1,7 @@
+*.sublime-project
+*.sublime-workspace
+
+.cache
+.vagrant
+Berksfile.lock
+*.swp

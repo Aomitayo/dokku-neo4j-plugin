@@ -1,0 +1,93 @@
+#!/bin/bash
+#set -e;
+
+APP=$2
+
+OLDHOME=$HOME
+HOME="$DOKKU_ROOT/.neo4j"
+
+check_exists() {
+  if [[ ! -d "$DOKKU_ROOT/$APP" ]]; then
+    echo "App must exist before adding neo4j config to it"
+    exit 1
+  fi
+}
+
+check_app() {
+  if [[ -z "$APP" ]]; then
+    echo "You must specify an app name"
+    exit 1
+  fi
+}
+
+check_container() {
+  if [[ -z "$id" ]]; then
+    echo "The Neo4j container failed to started. Try Starting it by running 'dokku neo4j:start'"
+    exit 1
+  fi
+}
+
+IMAGE="aomitayo/neo4j"
+id=$(docker ps | grep "$IMAGE":latest |  awk '{print $1}')
+if [[ -n "$id" ]]; then
+  neo4j_public_ip=$(docker port ${id} 7474 | awk '{split($0,a,":"); print a[1]}')
+  neo4j_private_ip=$(docker inspect ${id} | grep IPAddress | awk '{ print $2 }' | tr -d ',"')
+  neo4j_port=$(docker port ${id} 7474 | awk '{split($0,a,":"); print a[2]}')
+  if [[ $neo4j_public_ip = "0.0.0.0" ]]; then
+    neo4j_public_ip=localhost
+  fi
+fi
+
+case "$1" in
+  neo4j:add)
+    check_container
+    check_app
+    check_exists
+
+    neo4j_port=7474
+
+    dokku config:set "$APP" NEO4J_HOST="$neo4j_public_ip" \
+      NEO4J_PORT="$neo4j_port" \
+      NEO4J_URL="http://${neo4j_public_ip}:${neo4j_port}/${neo4j_database}"
+    ;;
+  neo4j:remove)
+    check_container
+    check_app
+    check_exists
+
+    dokku config:unset "$APP" NEO4J_HOST \
+      NEO4J_PORT \
+      NEO4J_URL
+    ;;
+  neo4j:start)
+    if [[ "$id" != "" ]]; then
+      echo "Neo4j container already running with ID: ${id}"
+    else
+      docker run -p 7474:7474 -d -v "$DOKKU_ROOT/.neo4j/data":/var/lib/neo4j/data "$IMAGE" /var/lib/neo4j/bin/neo4j start
+    fi
+    ;;
+  neo4j:stop)
+    check_container
+    docker stop "$id"
+    ;;
+  neo4j:status)
+    if [[ "$id" != "" ]]; then
+      echo "Neo4j container running with ID: ${id}"
+    else
+      echo "Neo4j container not running"
+    fi
+    ;;
+  help)
+    cat && cat<<EOF
+    neo4j:add <app>    Add Neo4j config to the app environment
+    neo4j:remove <app> Remove Neo4j config from the app environment
+    neo4j:start        Start the Neo4j docker container if it isn't running
+    neo4j:stop         Stop the Neo4j docker container
+    neo4j:status       Shows status of Neo4j
+EOF
+    ;;
+esac
+
+HOME=$OLDHOME
+
+cat
